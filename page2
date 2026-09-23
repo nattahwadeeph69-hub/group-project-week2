@@ -1,0 +1,127 @@
+"""page2.py — สถิติ และเครื่องคำนวณค่าใช้จ่าย"""
+import storage
+
+TITLE = "สถิติการเงิน"
+
+
+def read_number(text, default):
+    try:
+        value = float(text)
+    except ValueError:
+        return default
+    if value != value or value in (float("inf"), float("-inf")):
+        return default
+    return value
+
+
+def build(query=None):
+    items = storage.load()
+    entries = []
+    total_income = 0.0
+    total_expense = 0.0
+    per_category = {}
+
+    for item in items:
+        if "type" in item and "amount" in item:
+            item_type = item.get("type", "expense")
+            amount = float(item.get("amount", 0))
+            category = item.get("category", "ทั่วไป")
+            note = item.get("note", "รายการ")
+            date = item.get("date", "")
+            if item_type == "income":
+                total_income = total_income + amount
+            else:
+                total_expense = total_expense + amount
+                if category in per_category:
+                    per_category[category] = per_category[category] + amount
+                else:
+                    per_category[category] = amount
+            entries.append({
+                "type": item_type,
+                "amount": amount,
+                "category": category,
+                "note": note,
+                "date": date,
+            })
+        elif "qty" in item and "price" in item:
+            qty = int(item.get("qty", 0))
+            price = float(item.get("price", 0))
+            amount = qty * price
+            category = item.get("category", "สินค้า")
+            total_expense = total_expense + amount
+            if category in per_category:
+                per_category[category] = per_category[category] + amount
+            else:
+                per_category[category] = amount
+            entries.append({
+                "type": "expense",
+                "amount": amount,
+                "category": category,
+                "note": item.get("name", "สินค้า"),
+                "date": "-",
+            })
+
+    balance = total_income - total_expense
+
+    biggest_value = 0
+    for category in per_category:
+        if per_category[category] > biggest_value:
+            biggest_value = per_category[category]
+
+    category_bars = []
+    highest_category = {"name": "-", "value": 0, "percent": 0}
+    for category in per_category:
+        value = per_category[category]
+        percent = 0
+        if biggest_value > 0:
+            percent = int(value * 100 / biggest_value)
+        if value > highest_category["value"]:
+            highest_category = {"name": category, "value": value, "percent": percent}
+        category_bars.append({"label": category, "value": value, "percent": percent})
+
+    monthly = read_number(query.get("monthly", ""), 0) if query else 0
+    months = int(read_number(query.get("months", ""), 6)) if query else 6
+    rate = read_number(query.get("rate", ""), 2) if query else 2
+    if months < 1:
+        months = 1
+    if months > 24:
+        months = 24
+
+    rows = []
+    month = 1
+    balance_plan = total_income - total_expense
+    while month <= months:
+        balance_plan = balance_plan + monthly
+        balance_plan = balance_plan - (balance_plan * rate / 100 / 12)
+        rows.append({
+            "month": month,
+            "monthly": monthly,
+            "balance": balance_plan,
+        })
+        month = month + 1
+
+    category_check = ""
+    category_message = ""
+    if query:
+        category_check = query.get("category", "").strip()
+        if category_check != "":
+            if category_check == highest_category["name"]:
+                category_message = "ถูกต้อง หมวดหมู่นี้เป็นหมวดหมู่ที่ใช้จ่ายสูงสุด"
+            elif highest_category["name"] == "-":
+                category_message = "ยังไม่มีข้อมูลค่าใช้จ่าย จึงไม่สามารถตรวจสอบได้"
+            else:
+                category_message = "ไม่ถูกต้อง หมวดหมู่ที่ใช้จ่ายสูงสุดคือ " + highest_category["name"]
+
+    return {
+        "total_income": total_income,
+        "total_expense": total_expense,
+        "balance": balance,
+        "category_bars": category_bars,
+        "highest_category": highest_category,
+        "monthly": monthly,
+        "months": months,
+        "rate": rate,
+        "rows": rows,
+        "category_check": category_check,
+        "category_message": category_message,
+    }
