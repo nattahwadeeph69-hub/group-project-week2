@@ -1,0 +1,95 @@
+"""page1.py — บันทึกรายรับ-รายจ่าย"""
+import storage
+
+TITLE = "บันทึกรายรับ-รายจ่าย"
+
+
+def read_number(text):
+    """แปลงข้อความเป็นจำนวนเงินที่ถูกต้องหรือคืน None"""
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    if value != value or value in (float("inf"), float("-inf")):
+        return None
+    return value
+
+
+def build():
+    items = storage.load()
+    rows = []
+    income_total = 0.0
+    expense_total = 0.0
+
+    for index, item in enumerate(items):
+        row = {
+            "no": index,
+            "type": item.get("type", "income"),
+            "amount": float(item.get("amount", 0)),
+            "category": item.get("category", "ทั่วไป"),
+            "note": item.get("note", "-"),
+            "date": item.get("date", "-"),
+        }
+        if row["type"] == "income":
+            income_total = income_total + row["amount"]
+        else:
+            expense_total = expense_total + row["amount"]
+        rows.append(row)
+
+    rows.reverse()
+    balance = income_total - expense_total
+    return {
+        "items": rows,
+        "count": len(rows),
+        "income_total": income_total,
+        "expense_total": expense_total,
+        "balance": balance,
+    }
+
+
+def handle(form):
+    items = storage.load()
+
+    action = form.get("action", "")
+    if action == "delete":
+        value = form.get("delete", "")
+        if value.isdigit() and int(value) < len(items):
+            removed = items.pop(int(value))
+            storage.save(items)
+            return "ลบรายการแล้ว: " + removed.get("note", "รายการ")
+        return "ไม่พบรายการที่ลบ"
+
+    kind = form.get("type", "").strip()
+    if kind != "income" and kind != "expense":
+        return "เลือกประเภทรายรับหรือรายจ่าย"
+
+    amount = read_number(form.get("amount", ""))
+    if amount is None:
+        return "จำนวนเงินต้องเป็นตัวเลข"
+    if amount <= 0:
+        return "จำนวนเงินต้องมากกว่า 0"
+
+    note = form.get("note", "").strip()
+    if note == "":
+        return "กรุณากรอกคำอธิบาย"
+
+    date_text = form.get("date", "").strip()
+    if date_text == "":
+        return "กรุณาเลือกวันที่"
+
+    category = form.get("category", "").strip()
+    if category == "":
+        category = "ทั่วไป"
+
+    items.append({
+        "type": kind,
+        "amount": round(amount, 2),
+        "category": category,
+        "note": note,
+        "date": date_text,
+    })
+    storage.save(items)
+
+    if kind == "income":
+        return "บันทึกรายรับแล้ว: " + note
+    return "บันทึกรายจ่ายแล้ว: " + note
